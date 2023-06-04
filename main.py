@@ -48,12 +48,22 @@ from telegram.ext import (
 )
 
 # Validate BTC and USDT addresses
+def validate_usdt_address(address):
+    pattern = r"T[A-Za-z1-9]{33}"
+    match = re.fullmatch(pattern, address)
+    if match:
+        return True
+    else:
+        return False
+
+# Validate BTC and USDT addresses
 def validate_wallet_address(address):
     result_btc = coinaddrvalidator.validate('btc', address)
     result_eth = coinaddrvalidator.validate('eth', address)
+    result_usdt = validate_usdt_address(address)
     # TODO Increase the amount of validations
     print(f"BTC: {result_btc.valid},\nETH: {result_eth.valid}")
-    if result_btc.valid or result_eth.valid:
+    if result_btc.valid or result_eth.valid or result_usdt:
         return True
     else:
         return False
