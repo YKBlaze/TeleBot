@@ -147,13 +147,14 @@ async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Write the information to the Google Spreadsheet
     row_data = [value for _, value in infoPerson.__dict__.items()]
-    if infoPerson.type == "deposit":
+    if infoPerson.type.lower() == "deposit":
         reference_number = get_ref_num(1)
         worksheet = spreadsheet.worksheet(worksheet_name)
     else:
         reference_number = get_ref_num(2)
         worksheet = spreadsheet.worksheet(worksheet2_name)
     worksheet.append_row(row_data)
+
 
     # Prepare the data string to display
     data_string = "\n".join(
