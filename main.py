@@ -19,12 +19,17 @@ client = gspread.authorize(credentials)
 # Open the Google Spreadsheet
 spreadsheet = client.open("<SpreadsheetNameTopLeft>")
 worksheet_name = "<SpreadSheetNameTabBotLeft>"
+worksheet2_name = "<SpreadSheetNameTabBotLeft>"
 worksheet = spreadsheet.worksheet(worksheet_name)
+worksheet2 = spreadsheet.worksheet(worksheet2_name)
 
-def get_ref_num():
+def get_ref_num(num):
     # Get the current available blank row number
     ref_num = None
-    col_values = worksheet.col_values(1)  # Assuming column A is used to track empty rows
+    if num == 1:
+        col_values = worksheet.col_values(1)  # Assuming column A is used to track empty rows
+    elif num == 2:
+        col_values = worksheet2.col_values(1)  # Assuming column A is used to track empty rows
 
     for row_num in range(len(col_values), 0, -1):
         if not col_values[row_num - 1]:
@@ -76,10 +81,10 @@ usdt_address = "0x89D24A7b4cCB1b6fAA2625fE562bDD9a23260359"
 eth_address = "0x5B38Da6a701c568545dCfcB03FcB875f56beddC4"
 
 
-
 class InfoPerson:
     def __init__(self):
         self.date= ""
+        self.type = ""
         self.name = ""
         self.email = ""
         self.exchange = ""
@@ -92,7 +97,8 @@ class InfoPerson:
 infoPerson = InfoPerson()
 TOKEN: Final = "<BotToken>"
 BOT_USERNAME: Final = "@<BotUserName>"
-#TODO GROUP_ID: Final = <Group ID>  # Replace with the ID of the specific group
+GROUP_ID: Final = num  # Replace with the ID of the specific group
+USER_ID: Final = num # Replace with the ID of the specific user
 
 # Commands
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -106,6 +112,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = "Type the following commands to enter the corresponding information:\n"
     message += '- "date:01/01/01" to enter date\n'
+    message += '- "type:deposit/withdrawal" to enter the type\n'
     message += '- "name:username" to enter username\n'
     message += '- "email:EmailAddress" to enter email\n'
     message += '- "wallet:exchange" to enter exchange\n'
@@ -125,6 +132,7 @@ async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         value == ""
         for value in [
             infoPerson.date,
+            infoPerson.type,
             infoPerson.name,
             infoPerson.email,
             infoPerson.exchange,
@@ -138,13 +146,19 @@ async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Write the information to the Google Spreadsheet
-    row_data = [infoPerson.date, infoPerson.name, infoPerson.email, infoPerson.exchange, infoPerson.wallet, infoPerson.hash, infoPerson.amount,infoPerson.currency]
+    row_data = [value for _, value in infoPerson.__dict__.items()]
+    if infoPerson.type == "deposit":
+        reference_number = get_ref_num(1)
+        worksheet = spreadsheet.worksheet(worksheet_name)
+    else:
+        reference_number = get_ref_num(2)
+        worksheet = spreadsheet.worksheet(worksheet2_name)
     worksheet.append_row(row_data)
 
     # Prepare the data string to display
     data_string = "\n".join(
         f"{key}: {value}"
-        for key, value in zip(["Date", "Name", "Email", "Exchange", "Wallet", "Hash", "Amount","Currency"], row_data)
+        for key, value in zip(["Date", "Type", "Name", "Email", "Exchange", "Wallet", "Hash", "Amount","Currency"], row_data)
     )
 
     # Send the success message along with the data
@@ -170,27 +184,13 @@ async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
          response_message = "🎆🎆💥💥🔥🔥🧨😍🧨🔥🔥💥💥🎆🎆"  # Create the response message with "😍"
          await success_quote.reply_text(response_message, quote=True)
     
-
     # Reset infoPerson values
-    infoPerson.date = ""
-    infoPerson.name = ""
-    infoPerson.email = ""
-    infoPerson.exchange = ""
-    infoPerson.wallet = ""
-    infoPerson.hash = ""
-    infoPerson.amount = ""
-    infoPerson.currency = ""
-
+    for attr in vars(infoPerson):
+        setattr(infoPerson, attr, "")
 
 async def create_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    infoPerson.date = ""
-    infoPerson.name = ""
-    infoPerson.email = ""
-    infoPerson.exchange = ""
-    infoPerson.wallet = ""
-    infoPerson.hash = ""
-    infoPerson.amount = ""
-    infoPerson.currency = ""
+    for attr in vars(infoPerson):
+        setattr(infoPerson, attr, "")
     await update.message.reply_text("Type /help to view commands")
 
 
@@ -208,7 +208,7 @@ def handle_response(text: str) -> str:
     for line in lines:
         if ":" in line:
             key, value = line.split(":", 1)  # Split only once
-            key = key.strip()
+            key = key.strip().lower()
             value = value.strip()
             if key == "wallet":
                 data[key] = value  # Preserve capital letters in the wallet value
@@ -216,6 +216,19 @@ def handle_response(text: str) -> str:
                 data[key.lower()] = value.lower()  # Convert other keys and values to lowercase
 
     # Validate and assign the data to infoPerson
+    if "wallet" in data:
+        wallet_value = data["wallet"]
+        if not validate_wallet_address(wallet_value):
+            return "Invalid wallet address."
+        infoPerson.wallet = wallet_value
+
+    if "type" in data:
+        type = data["type"]
+        if type == "withdrawal" or type == "deposit":
+            infoPerson.type = type.capitalize()
+        else:
+            return "Invalid type."     
+
     if "date" in data:
         date = data["date"]
         try:
@@ -248,12 +261,6 @@ def handle_response(text: str) -> str:
         exchange = exchange.capitalize()
         infoPerson.exchange = exchange
 
-    if "wallet" in data:
-        wallet_value = data["wallet"]
-        if not validate_wallet_address(wallet_value):
-            return "Invalid wallet address."
-        infoPerson.wallet = wallet_value
-
     if "hash" in data:
         hash_value = data["hash"]
         infoPerson.hash = hash_value
@@ -272,12 +279,10 @@ def handle_response(text: str) -> str:
         return f"🐓🐓🐓🐔🐔🐔🐔🐔🐓🐓🐓🐓"
     
     # Check if no data was assigned
-    if not infoPerson.name and not infoPerson.email and not infoPerson.hash and not infoPerson.amount and not infoPerson.currency and not infoPerson.date:
+    if all(not value for _, value in infoPerson.__dict__.items()):
         return "I didn't understand. Type /help for more info"
 
     return "Current Data:\n" + '\n'.join(f"{key.capitalize()}: {value}" for key, value in infoPerson.__dict__.items())
-
-
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -301,7 +306,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             return  # We don't want the bot respond if it's not mentioned in the group
     else:
-        response: str = handle_response(text)
+        if USER_ID == update.message.chat.id:
+            response: str = handle_response(text)
+        else:
+            response: str = handle_response(text)
+
+    # Reply normally if the message is in private
+    print('Bot:', response)
+    await update.message.reply_text(response)
 
     # Reply normally if the message is in private
     print('Bot:', response)
